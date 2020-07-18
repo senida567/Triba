@@ -1,0 +1,370 @@
+<!doctype html>
+<html>
+<head>
+    <title></title>
+    <link rel="stylesheet" type="text/css" href="stylesheet.css">
+
+</head>
+
+<body>
+
+	<div id="menu">
+		<table>
+			<tr>
+				<td><a href="upute.html">UPUTE</a></td>
+			</tr>
+			<tr>
+				<td><a href="o_projektu.html" >O PROJEKTU</a></td>
+			</tr>
+			<tr>
+				<td onclick="canvas()"><a>NOVA IGRA</a></td>
+			</tr>
+		</table>
+	</div>
+
+	<div>
+		<table>
+			<tr><td>REZULTAT</td></tr>
+			<tr>
+				<td>Igrac 1</td>
+				<td id="output1"></td>
+			</tr>
+			<tr>
+				<td>Igrac 2</td>
+				<td id="output2"></td>
+			</tr>
+
+	</div>
+
+
+	<div>
+		<canvas id="myCanvas"></canvas>
+	</div>
+   	<script type="text/javascript"> //src="index.js">	
+
+var data = {
+    canvas: null,
+    ctx: null,
+    kliknutaTacka: null,
+    tacke: [{x: 100, y: 100, zauzeta: false, boja: '#777'}]},
+
+    broj_redova = 1,
+    broj_kolona = 1,
+    razmak = 70, 
+    r = 5,
+    boja_tacke = ['#777', 'red', 'green'],
+    linije = [], //sve iscrtane linije
+    linije_crtanje = [], //linije trugla kojeg treba crtati, pa se brise niz
+    padding = 30,
+    broj_igraca = 2,
+    boje = ['red', 'green'],
+    trenutni_igrac = 0,
+    kliknuto = 0, //kad korisnik klikne na tri tacke crta se trougao
+    rezultati = [0, 0];
+
+
+//popuni polje tackama
+function popuniTacke(standardna){
+    if(standardna == 1) popuniTackeNS();
+    else{
+        var k = 0;
+        for(var i = padding; i < broj_redova * razmak; i += razmak){
+            for(var j = padding; j < broj_kolona * razmak; j += razmak){
+                data.tacke[k] = {x: j, y: i, zauzeta: false, boja: boja_tacke[0]},
+                nacrtajTacku(data.tacke[k]);    
+                k++;
+            }
+        }
+    }
+}
+
+//postavi sve tacke koje se nalaze na pravoj (odTacke, doTacke) da su zauzete
+//da se ne bi mogla vise birati za sljedece trouglove
+function zauzeteTacke(odTacke, doTacke){
+    var x1 = odTacke.x,
+        y1 = odTacke.y,
+        x2 = doTacke.x,
+        y2 = doTacke.y;
+
+    //provjeri za sve tacke koje u polju da li odgovaraju if uslovu
+    for(var i = 0; i < data.tacke.length; i++){
+        var x3 = data.tacke[i].x,
+            y3 = data.tacke[i].y;
+        //if -> sve tacke koje pripadaju pravoj (odTacke, doTacke) oboji u boju trougla koji se crta, tako znamo 
+        //koje tacke su zauzete, i vise ih ne moze korisnik odabrati
+        //tako da se trouglovi nece sjeci
+        if((((x3 <= x2 && x3 >= x1) || (x3 >= x2 && x3 <= x1)) && ((y3 <= y1 && y3 >= y2) || (y3 >= y1 && y3 <= y2)))
+            && trougao(x1, y1, x2, y2, x3, y3) == false){
+            data.tacke[i].zauzeta = true;
+            data.tacke[i].boja = boja_tacke[trenutni_igrac+1];
+            nacrtajTacku(data.tacke[i]);
+        }
+    }
+}
+
+//crta tacku
+function nacrtajTacku(d) {
+    data.ctx.beginPath();
+    data.ctx.arc(d.x, d.y, r, 0, 2*Math.PI);
+    data.ctx.fillStyle = d.boja;
+    data.ctx.fill();
+    data.ctx.closePath();
+}
+
+//preuzeto sa https://stackoverflow.com/questions/9043805/test-if-two-lines-intersect-javascript-function
+//returns true ako se linija (a,b)->(c,d) sijece sa (p,q)->(r,s)
+function intersects(a,b,c,d,p,q,r,s) {
+    var det, gamma, lambda;
+    det = (c - a) * (s - q) - (r - p) * (d - b);
+    if (det === 0) {
+        return false;
+    } else {
+        lambda = ((s - q) * (r - a) + (p - r) * (s - b)) / det;
+        gamma = ((b - d) * (r - a) + (c - a) * (s - b)) / det;
+        return (0 < lambda && lambda < 1) && (0 < gamma && gamma < 1);
+    }
+};
+
+//provjeri za tri tacke koje je korisnik odabrao da li se trougao koji bi napravile sijece sa 
+//neki vec nacrtanim trouglom
+//ako se ne sijeku odabrane tacke su validne
+//u suprotnom bira ponovo
+function sijekuSe(x1, y1, x2, y2, x3, y3){
+    for(var i = 0; i < linije.length; i++){
+        if(intersects(x1, y1, x2, y2, linije[i].od.x, linije[i].od.y, linije[i].do.x, linije[i].do.y) == true ||
+           intersects(x2, y2, x3, y3, linije[i].od.x, linije[i].od.y, linije[i].do.x, linije[i].do.y) == true ||
+           intersects(x1, y1, x3, y3, linije[i].od.x, linije[i].od.y, linije[i].do.x, linije[i].do.y) == true){
+            return true;
+        }
+    }
+    return false;
+}
+
+//crta liniju izmedju dvije tacke
+//zatim sve tacke koje se nalaze na toj liniji postavi na zauzete = true
+//one se ne mogu birati za sljedece trouglove, pa ni trouglovi nece imati zajednickih tacaka
+function nacrtajLiniju(odTacke, doTacke) {
+        odTacke.zauzeta = true;
+        doTacke.zauzeta = true;
+        odTacke.boja = boja_tacke[trenutni_igrac+1];
+        doTacke.boja_tacke = boja_tacke[trenutni_igrac+1];
+        data.ctx.beginPath();
+        data.ctx.moveTo(odTacke.x, odTacke.y);
+        data.ctx.lineTo(doTacke.x, doTacke.y);
+        data.ctx.lineWidth = 2;
+        data.ctx.strokeStyle = boje[trenutni_igrac];
+        data.ctx.stroke();
+        data.ctx.closePath();
+
+        //tacke na liniji (odTacke,doTacke) = zauzete;
+        zauzeteTacke(odTacke, doTacke);
+}
+
+//provjeri da li se tacke preklapaju, da bi mogli
+//provjeriti da li se na kliknutom polju nalazi tacka
+function preklapanjeTacki(c1, c2){
+    var a = c1.r + c2.r,
+        x = c1.x - c2.x,
+        y = c1.y - c2.y;
+
+    if(a > Math.sqrt( (x*x) + (y*y) ) ) return true;
+    else return false;
+}
+
+//provjeri da li odabrane tacke prave trougao, 
+//tj. ako nisu kolinearne onda su tacke validne, u suprotnom ponovo bira
+function trougao(x1, y1, x2, y2, x3, y3){
+    var povrsina = 0.5 * Math.abs(x1 * (y2 - y3) + x2 * (y3 - y1) + x3 * (y1 - y2));
+    return (povrsina != 0);
+}
+
+//vrati true ako nijedna tacka na liniji (odTacke, doTacke) nije vec zauzeta
+function zajednickeTacke(odTacke, doTacke){
+    var x1 = odTacke.x,
+        y1 = odTacke.y,
+        x2 = doTacke.x,
+        y2 = doTacke.y;
+
+    for(var i = 0; i < data.tacke.length; i++){
+        var x3 = data.tacke[i].x,
+            y3 = data.tacke[i].y;
+        if((((x3 <= x2 && x3 >= x1) || (x3 >= x2 && x3 <= x1)) && ((y3 <= y1 && y3 >= y2) || (y3 >= y1 && y3 <= y2)))
+            && trougao(x1, y1, x2, y2, x3, y3) == false){
+            if(data.tacke[i].zauzeta == true) return true;
+        }
+    }
+    return false;
+}
+
+
+//od odabrane 3 tacke provjerava da li je moguce napraviti trougao
+//ako nije korisnik bira nove tri tacke
+function iscrtajTrougao(){
+    var x1 = linije_crtanje[0].od.x,
+        y1 = linije_crtanje[0].od.y,
+        x2 = linije_crtanje[0].do.x,
+        y2 = linije_crtanje[0].do.y,
+        x3 = linije_crtanje[1].od.x,
+        y3 = linije_crtanje[1].od.y;
+
+    //ako su izabrane tacke kolinearne korisnik bira ponovo
+    if(trougao(x1, y1, x2, y2, x3, y3) == false){
+        prompt("Izabrane tacke ne prave trougao");
+        return 0;
+    }
+
+    //ako nijedna od tri izabrane tacke nisu vec zauzete
+    if(linije_crtanje[0].od.zauzeta == false &&
+        linije_crtanje[0].do.zauzeta == false &&
+        linije_crtanje[1].od.zauzeta == false){
+
+            //ako se linije koje bi te tacke napravile ne sijeku sa vec postojecim linijama
+            if(sijekuSe(x1, y1, x2, y2, x3, y3) == false &&
+                //i nijedna linija ne zauzima vec zauzetu tacku
+               zajednickeTacke(linije_crtanje[0].od, linije_crtanje[0].do) == false &&
+               zajednickeTacke(linije_crtanje[1].od, linije_crtanje[1].do) == false &&
+               zajednickeTacke(linije_crtanje[1].od, linije_crtanje[0].do) == false){
+                    //onda se trougao ne preklapa sa drugim trouglovima, pa nacrtaj trougao
+                    nacrtajLiniju(linije_crtanje[0].od, linije_crtanje[0].do), //stranica1
+                    nacrtajLiniju(linije_crtanje[1].od, linije_crtanje[1].do), //stranica2
+                    nacrtajLiniju(linije_crtanje[1].od, linije_crtanje[0].do), //stranica3
+                    //dodaj nacrtane linije u niz linije,
+                    //da bi za ostale trouglove znali da su te linije vec zauzete
+                    linije[linije.length] = {od: linije_crtanje[0].od, do: linije_crtanje[0].do},
+                    linije[linije.length] = {od: linije_crtanje[1].od, do: linije_crtanje[1].do},
+                    linije[linije.length] = {od: linije_crtanje[1].od, do: linije_crtanje[0].do};
+
+                    return 1;  
+            //ako se linije koje bi te tacke napravile sijeku sa vec postojecim linijama 
+            }else{
+                //trougao nije vlaidan jer sadrzi neku tacku koja je vec zauzeta ili neka
+                //od stranica presjeca sa stranicom drugog trougla
+                prompt("Trouglovi se ne mogu sjeci");
+                return 0;
+            } 
+    //neka od tri izabrane tacke je vec zauzeta
+    }else{
+        prompt("Trouglovi ne mogu imati zajednicke tacke");
+        return 0;
+    }
+}
+
+//provjeri da li se na odabranim koordinatama nalazi tacka
+function provjeriTacku(e){
+    var col = null;
+
+    //ako se odabrane koordinate poklapaju sa nekom tackom iz niza data.tacke onda je col ta tacka
+    //ako nije pronadjena tacka na tim koordinatama onda je col null
+    for (var i = 0; i < data.tacke.length; i++) {
+        var d = data.tacke[i],
+            c1 = {x: d.x, y: d.y, r: r},
+            c2 = {x: e.pageX-5, y: e.pageY-5-83, r: r};
+        if(preklapanjeTacki(c1, c2)){
+            col = d;
+        }
+    }
+    
+    //ako je korisnik kliknuo na tacku
+    if(col !== null){
+        if(data.kliknutaTacka !== null){
+            linije_crtanje[linije_crtanje.length] = {od: col, do: data.kliknutaTacka},
+            kliknuto++;
+            if(kliknuto == 2){ //odabrane su tri tacke
+                if(iscrtajTrougao() == 1){ //ako su tacke validne za trougao
+                    rezultati[trenutni_igrac]++,
+                    //za ispis rezultata igraca1 
+                    document.getElementById('output1').innerHTML = rezultati[0];
+                    //za ispis rezultata igraca2
+                    document.getElementById('output2').innerHTML = rezultati[1];
+                    trenutni_igrac = (++trenutni_igrac) % broj_igraca;
+                }
+                //i ako nije nacrtan trougao varijable se postavljaju na 0
+                //a ako je nacrtan onda se jos promijeni razultat i igrac
+                kliknuto = 0,
+                col = null,
+                linije_crtanje.length = 0;
+            }
+        }
+        data.kliknutaTacka = col;
+    }else{
+        data.kliknutaTacka = null;
+    }
+}
+
+//nestandardno polje 
+function popuniTackeNS(){
+    data.tacke[0] = {x: 30, y: 30, zauzeta: false, boja: boja_tacke[0]},
+    nacrtajTacku(data.tacke[0]); 
+
+    data.tacke[1] = {x: 170, y: 100, zauzeta: false, boja: boja_tacke[0]},
+    nacrtajTacku(data.tacke[1]);
+
+    data.tacke[2] = {x: 310, y: 310, zauzeta: false, boja: boja_tacke[0]},
+    nacrtajTacku(data.tacke[2]);
+
+    data.tacke[3] = {x: 310, y: 100, zauzeta: false, boja: boja_tacke[0]},
+    nacrtajTacku(data.tacke[3]);
+
+    data.tacke[4] = {x: 30, y: 520, zauzeta: false, boja: boja_tacke[0]},
+    nacrtajTacku(data.tacke[4]);
+
+    data.tacke[5] = {x: 100, y: 310, zauzeta: false, boja: boja_tacke[0]},
+    nacrtajTacku(data.tacke[5]);
+
+    data.tacke[6] = {x: 590, y: 520, zauzeta: false, boja: boja_tacke[0]},
+    nacrtajTacku(data.tacke[6]);
+
+    data.tacke[7] = {x: 240, y: 240, zauzeta: false, boja: boja_tacke[0]},
+    nacrtajTacku(data.tacke[7]);
+
+    data.tacke[8] = {x: 100, y: 240, zauzeta: false, boja: boja_tacke[0]},
+    nacrtajTacku(data.tacke[8]);
+
+    data.tacke[9] = {x: 170, y: 170, zauzeta: false, boja: boja_tacke[0]},
+    nacrtajTacku(data.tacke[9]);
+
+    data.tacke[10] = {x: 520, y: 520, zauzeta: false, boja: boja_tacke[0]},
+    nacrtajTacku(data.tacke[10]);
+
+    data.tacke[11] = {x: 450, y: 450, zauzeta: false, boja: boja_tacke[0]},
+    nacrtajTacku(data.tacke[11]);
+}
+
+//glavna funkcija
+function canvas() {
+    var res = window.devicePixelRatio || 1;
+
+    var standardna = prompt("Za standardnu plocu unesite 0, za plocu nepravilnog oblika unesite 1");
+
+    if(standardna == 0){
+        while(broj_redova % 2 != 0 || broj_kolona % 2 != 0){
+            broj_redova = parseInt(prompt("Broj redova (paran)?", 8)),
+            broj_kolona = parseInt(prompt("Broj kolona (paran)?", 10));
+        }
+    }else{
+        broj_kolona = 10;
+        broj_redova = 8;
+    }
+
+    data.canvas = document.getElementById('myCanvas');
+    data.ctx = data.canvas.getContext('2d');
+    data.canvas.width = razmak * broj_kolona;
+    data.canvas.height = razmak * broj_redova;
+    data.canvas.style = 'border: 3px solid black';
+    
+    popuniTacke(standardna);
+
+    data.canvas.addEventListener('mousedown', function (e) {
+        provjeriTacku(e); //provjeri da li se na odabranim kooridnatama nalazi tacka
+    });
+}
+
+
+
+
+
+
+   </script>
+
+</body>    
+</html>
